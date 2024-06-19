@@ -44,7 +44,7 @@ inline bool VictimCache::put(ObjectPtr *optr_addr,
 
   std::unique_lock<std::mutex> ul(mtx_);
   auto iter = map_.find(optr_addr);
-  if (iter != map_.cend()) {
+  if (iter != map_.cend()) { // debug阶段这个没有触发过
     auto entry = iter->second;
     size_ -= entry->size;
     MIDAS_LOG(kDebug) << "Replace an existing optr in victim cache "
@@ -57,9 +57,9 @@ inline bool VictimCache::put(ObjectPtr *optr_addr,
     return true;
   }
 
-  auto entry = entries_.emplace_front(optr_addr, construct_args);
+  auto entry = entries_.emplace_front(optr_addr, construct_args); // 类似push_front
   entry.optr->set_victim(true);
-  map_[optr_addr] = entries_.begin();
+  map_[optr_addr] = entries_.begin(); // 不是删除了，而是放进了这个map
   cnt_++;
   size_ += entry.size;
 

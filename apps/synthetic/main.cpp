@@ -12,6 +12,7 @@
 #include "utils.hpp"
 #include "zipf.hpp"
 #include "sync_kv.hpp"
+#include "smdk_opt_api.hpp"
 
 namespace synthetic {
 
@@ -21,7 +22,7 @@ constexpr static int kNumThds = 12;
 constexpr static int kComputeCost = 30;
 constexpr static int64_t kVSize = 4000;
 constexpr static int64_t kNumValues = 2 * 1024 * 1024;
-constexpr static int64_t kCacheSize = (sizeof(int) + kVSize) * kNumValues * 1.1;
+constexpr static int64_t kCacheSize = (sizeof(int) + kVSize) * kNumValues * 1.1; // 大约9GB
 constexpr static float kCacheRatio = 0.2;
 
 struct Value {
@@ -40,7 +41,7 @@ public:
     cmanager->create_pool("synthetic");
     pool = cmanager->get_pool("synthetic");
     assert(pool);
-    pool->update_limit(kCacheRatio * kCacheSize);
+    pool->update_limit(kCacheRatio * kCacheSize); // 2GB
     cache = std::make_unique<midas::SyncKV<kNumBuckets>>(pool);
 
     for (int i = 0; i < kNumThds; i++) {
@@ -88,7 +89,7 @@ public:
         break;
     }
     Value v;
-    cache->set<int, Value>(key, v);
+    cache->set<int, Value>(key, v); // 这里实际上把值给穿进去了
     auto end = midas::Time::get_cycles_end();
     pool->record_miss_penalty(end - stt, midas::kPageSize);
   }
@@ -97,6 +98,7 @@ public:
     std::cout << "Start warm up..." << std::endl;
     for (int i = 0; i < kNumValues; i++) {
       Value v;
+      // std::cout<< i << std::endl; // 520个值分配一个region
       cache->set<int, Value>(i, v);
     }
     std::cout << "Warm up done!" << std::endl;
@@ -113,11 +115,15 @@ public:
 
 
 int main() {
-  std::vector<int> recon_costs = {0,  1,   2,   4,   8,    16,   32,
-                                  64, 128, 256, 512, 1024, 2048, 4096};
+  // std::vector<int> recon_costs = {0,  1,   2,   4,   8,    16,   32,
+  //                                 64, 128, 256, 512, 1024, 2048, 4096};
+  std::vector<int> recon_costs = {0};
   synthetic::App app;
+  SmdkAllocator& allocator = SmdkAllocator::get_instance();
+  allocator.stats_print('K');
   app.warmup();
-  for (auto recon_cost : recon_costs) {
+  allocator.stats_print('K');
+  for (auto recon_cost : recon_costs) { // czq: 用不同的recon cost来模拟
     app.recon_cost = recon_cost;
     midas::Perf perf(app);
     auto target_kops = 200;
@@ -128,4 +134,7 @@ int main() {
     std::cout << "Real Tput: " << perf.get_real_kops() << " Kops" << std::endl;
     // std::cout << "P99 Latency: " << perf.get_nth_lat(99) << " us" << std::endl;
   }
+  std::cout << "benchmark over" << std::endl;
+  allocator.stats_print('K');
+
 }

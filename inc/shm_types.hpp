@@ -18,6 +18,9 @@ enum CtrlOpCode {
   PROF_STATS,
   SET_WEIGHT,
   SET_LAT_CRITICAL,
+
+  ALLOC_CXL, // 在CXL上分配内存，这个暂时不确定要不要，因为这个过程应该是自适应选择发生的
+  UPD_CXL_LIMIT, // 更新CXL内存的数量限制
 };
 
 enum CtrlRetCode {

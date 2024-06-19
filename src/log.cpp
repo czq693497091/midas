@@ -35,7 +35,7 @@ inline std::optional<ObjectPtr> LogSegment::alloc_small(size_t size) {
     seal();
     return std::nullopt;
   }
-  pos_ += obj_size;
+  pos_ += obj_size; // 记录当前segment的使用情况
   return obj_ptr;
 }
 
@@ -78,7 +78,8 @@ inline bool LogSegment::free(ObjectPtr &ptr) {
 
 void LogSegment::destroy() noexcept {
   destroyed_ = true;
-  auto *rmanager = owner_->pool_->get_rmanager();
+  auto *rmanager = owner_->pool_->get_rmanager(); // segment找到自己的allocator进行内存销毁
+  MIDAS_LOG(kDebug) << "rmanager destroy";
   rmanager->FreeRegion(region_id_);
   alive_bytes_ = kMaxAliveBytes;
 }
@@ -86,13 +87,15 @@ void LogSegment::destroy() noexcept {
 /** LogAllocator */
 // alloc a new segment
 inline std::shared_ptr<LogSegment> LogAllocator::allocSegment(bool overcommit) {
+  MIDAS_LOG(kDebug) << "alloc a new segment";
+  
   auto *rmanager = pool_->get_rmanager();
   int rid = rmanager->AllocRegion(overcommit);
   if (rid == -1)
     return nullptr;
   VRange range = rmanager->GetRegion(rid);
 
-  return std::make_shared<LogSegment>(
+  return std::make_shared<LogSegment>( // logsegment这东西放在本地内存可能影响不大？数据可能确实是要放cxl里
       this, rid, reinterpret_cast<uint64_t>(range.stt_addr));
 }
 
@@ -107,19 +110,19 @@ std::optional<ObjectPtr> LogAllocator::alloc_(size_t size, bool overcommit) {
     pcab_.local_seg.reset();
   }
   if (!pcab_.local_seg)
-    pcab_.local_seg = stashed_pcabs_.pop_front();
+    pcab_.local_seg = stashed_pcabs_.pop_front(); // stashed_pcabs_可能是当前allocator缓存的segment
   while (LIKELY(pcab_.local_seg.get() != nullptr)) {
-    auto ret = pcab_.local_seg->alloc_small(size);
+    auto ret = pcab_.local_seg->alloc_small(size); // 确定下这个segment的内存是不是被分配完了
     if (ret)
       return ret;
     assert(pcab_.local_seg->sealed());
     // put pcab into segments_ and drop the reference so segments_ will be the
     // only owner.
-    segments_.push_back(pcab_.local_seg);
-    pcab_.local_seg = stashed_pcabs_.pop_front();
+    segments_.push_back(pcab_.local_seg); // 用完了假如到这个队列里
+    pcab_.local_seg = stashed_pcabs_.pop_front(); // stashed如果还有就从里面pop，也可能是null
   }
   // slowpath
-  auto segment = allocSegment(overcommit);
+  auto segment = allocSegment(overcommit); // stashed_pcabs_用完了，需要重新分配
   if (!segment)
     return std::nullopt;
 
@@ -251,7 +254,7 @@ failed:
 }
 
 // Define PCAB
-thread_local LogAllocator::PCAB LogAllocator::pcab_;
+thread_local LogAllocator::PCAB LogAllocator::pcab_; // czq: 每个线程独立拥有
 thread_local int32_t LogAllocator::access_cnt_ = 0;
 thread_local int32_t LogAllocator::alive_cnt_ = 0;
 std::atomic_int64_t LogAllocator::total_access_cnt_{0};

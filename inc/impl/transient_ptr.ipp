@@ -62,6 +62,7 @@ inline int64_t TransientPtr::atomic_add(int64_t offset, int64_t val) {
   return __sync_fetch_and_add(addr, val);
 }
 
+// 对地址改动最多的就这里了
 inline bool TransientPtr::copy_from(const void *src, size_t len,
                                     int64_t offset) {
   if (null())

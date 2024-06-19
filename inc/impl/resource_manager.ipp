@@ -44,4 +44,18 @@ inline ResourceManager *ResourceManager::global_manager() noexcept {
   return global_manager_shared_ptr().get();
 }
 
+inline void ResourceManager::prof_nr_stats(){
+  int64_t nr_avail = NumRegionAvail(); // limit - inUse
+  int64_t nr_limit = NumRegionLimit();
+  int64_t nr_target = reclaim_target();
+  int64_t nr_pending = nr_pending_;
+  int64_t nr_headroom = reclaim_headroom();
+  MIDAS_LOG(kDebug) 
+  << "prof nr_stats, nr_avail: " << nr_avail 
+  << ", nr_limit: " << nr_limit 
+  << ", nr_target: " << nr_target
+  << ", nr_pendding: " << nr_pending
+  << ", nr_headroom: " << nr_headroom;
+}
+
 } // namespace midas

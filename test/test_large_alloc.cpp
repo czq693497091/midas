@@ -9,6 +9,7 @@
 
 #include "log.hpp"
 #include "object.hpp"
+#include "smdk_opt_api.hpp"
 
 constexpr static int kNumThds = 10;
 constexpr static int kNumObjs = 10240;

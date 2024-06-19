@@ -197,6 +197,7 @@ bool SyncKV<NBuckets, Alloc, Lock>::set(const void *k, size_t kn, const void *v,
     }
   }
 
+  // 
   auto new_node = create_node(key_hash, k, kn, v, vn);
   if (!new_node)
     return false;
@@ -701,13 +702,13 @@ inline uint64_t SyncKV<NBuckets, Alloc, Lock>::hash_(const void *k, size_t kn) {
 template <size_t NBuckets, typename Alloc, typename Lock>
 inline BNPtr<NBuckets, Alloc, Lock> SyncKV<NBuckets, Alloc, Lock>::create_node(
     uint64_t key_hash, const void *k, size_t kn, const void *v, size_t vn) {
-  auto *new_node = new BucketNode();
+  auto *new_node = new BucketNode(); // new_node本身不存放实际数据，这个结构是专门用于存放元数据的
   if (!pool_->alloc_to(sizeof(size_t) * 2 + kn + vn, &new_node->pair) ||
       !new_node->pair.copy_from(&kn, sizeof(size_t), layout::klen_offset()) ||
       !new_node->pair.copy_from(&vn, sizeof(size_t), layout::vlen_offset()) ||
       !new_node->pair.copy_from(k, kn, layout::k_offset()) ||
       !new_node->pair.copy_from(v, vn, layout::v_offset(kn))) {
-    delete new_node;
+    delete new_node; // 这里连着执行4次，直接导致access_count = 4?
     return nullptr;
   }
   // assert(!new_node->pair.null());

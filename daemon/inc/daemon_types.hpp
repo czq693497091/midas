@@ -145,8 +145,12 @@ private:
   std::atomic_int_fast64_t region_cnt_;
   uint64_t region_limit_;
   // For simluation
-  constexpr static uint64_t kInitRegions = (100ull << 20) / kRegionSize;// 100MB
-  constexpr static uint64_t kMaxRegions = (100ull << 30) / kRegionSize; // 100GB
+  constexpr static uint64_t kInitRegions = (100ull << 20) / kRegionSize;// 100MB = 50 regions
+  constexpr static uint64_t kMaxRegions = (100ull << 30) / kRegionSize; // 100GB = 51200 regions
+
+  constexpr static uint64_t kCXLInitRegions = 0 / kRegionSize;
+  constexpr static uint64_t kCXLMaxRegions = 0 / kRegionSize;
+
 
   friend class Client;
 };
@@ -159,6 +163,9 @@ Daemon::Policy check_policy();
 
 constexpr static char kMemoryCfgFile[] = "config/mem.config";
 constexpr static char kPolicyCfgFile[] = "config/policy.config";
+constexpr static char kCXLMemoryCfgFile[] = "config/cxl_mem.config";
+constexpr static char kRDMAMemoryCfgFile[] = "config/rdma_mem.config";
+constexpr static char kTCPMemoryCfgFile[] = "config/tcp_mem.config";
 }
 
 } // namespace midas

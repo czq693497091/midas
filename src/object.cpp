@@ -25,7 +25,7 @@ void ObjectPtr::unlock(LockID id) {
 }
 
 RetCode ObjectPtr::free(bool locked) noexcept {
-  if (locked)
+  if (locked) // 是否已经上锁 避免重复上锁
     return is_small_obj() ? free_small() : free_large();
 
   auto ret = RetCode::Fail;
@@ -52,8 +52,8 @@ bool ObjectPtr::copy_from_small(const void *src, size_t len, int64_t offset) {
       goto done;
     if (!meta_hdr.is_present())
       goto done;
-    meta_hdr.inc_accessed();
-    if (!store_hdr(meta_hdr, *this))
+    meta_hdr.inc_accessed(); // 确实每次都增加
+    if (!store_hdr(meta_hdr, *this)) // hdr和objptr分开存放，因此每次使用都是load/store绑定
       goto done;
 
     ret = obj_.copy_from(src, len, hdr_size() + offset);

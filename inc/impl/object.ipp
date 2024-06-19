@@ -43,11 +43,18 @@ inline bool MetaObjectHdr::is_accessed() const noexcept {
 }
 inline void MetaObjectHdr::inc_accessed() noexcept {
   int64_t accessed = (flags & kAccessedMask) >> kAccessedBit;
-  accessed = std::min<int64_t>(accessed + 1, 3ll);
+  accessed = std::min<int64_t>(accessed + 1, 3ll); // 访问数至多为3，这里的3是因为线程的缘故吗，也可能是由于多次copy_from导致
 
   flags &= ~kAccessedMask;
   flags |= (accessed << kAccessedBit);
 }
+
+inline int64_t MetaObjectHdr::get_accessed() noexcept {
+  int64_t accessed = (flags & kAccessedMask) >> kAccessedBit;
+  accessed = std::min<int64_t>(accessed + 1, 3ll);
+  return accessed;
+}
+
 inline void MetaObjectHdr::dec_accessed() noexcept {
   int64_t accessed = (flags & kAccessedMask) >> kAccessedBit;
   accessed = std::max<int64_t>(accessed - 1, 0ll);
@@ -290,6 +297,7 @@ inline RetCode ObjectPtr::init_from_soft(TransientPtr soft_ptr) {
   if (!hdr.is_valid())
     return RetCode::Fail;
 
+  // czq: 这里相当于是把之前的obj取出来，然后加上small / large obj的
   if (hdr.is_small_obj()) {
     SmallObjectHdr shdr = *(reinterpret_cast<SmallObjectHdr *>(&hdr));
     small_obj_ = true;
@@ -317,11 +325,11 @@ inline RetCode ObjectPtr::free_small() noexcept {
 
   if (!meta_hdr.is_valid())
     return RetCode::Fail;
-  meta_hdr.clr_present();
+  meta_hdr.clr_present(); // 确定其已经非live状态
   auto ret = store_hdr(meta_hdr, *this) ? RetCode::Succ : RetCode::FaultLocal;
   auto rref = reinterpret_cast<ObjectPtr *>(get_rref());
   if (rref)
-    rref->obj_.reset();
+    rref->obj_.reset(); // TransientPtr指向0
   return ret;
 }
 

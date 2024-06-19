@@ -19,63 +19,22 @@
 #include "shm_types.hpp"
 #include "time.hpp"
 #include "utils.hpp"
+#include "region.hpp"
 
 namespace midas {
-constexpr static int32_t kMaxAllocRetry = 5;
-constexpr static int32_t kReclaimRepeat = 20;
-constexpr static auto kReclaimTimeout = std::chrono::milliseconds(100);  // ms
-constexpr static auto kAllocRetryDelay = std::chrono::microseconds(100); // us
-constexpr static int32_t kMonitorTimeout = 1; // seconds
-constexpr static int32_t kDisconnTimeout = 3; // seconds
-constexpr static bool kEnableFreeList = true;
-constexpr static int32_t kFreeListSize = 512;
-
-std::atomic_int64_t Region::global_mapped_rid_{0};
-
-Region::Region(uint64_t pid, uint64_t region_id) noexcept
-    : pid_(pid), prid_(region_id), vrid_(INVALID_VRID) {
-  map();
-}
-
-void Region::map() noexcept {
-  assert(vrid_ == INVALID_VRID);
-  const auto rwmode = boost::interprocess::read_write;
-  const std::string shm_name_ = utils::get_region_name(pid_, prid_);
-  SharedMemObj shm_obj(boost::interprocess::open_only, shm_name_.c_str(),
-                       rwmode);
-  shm_obj.get_size(size_);
-  vrid_ = global_mapped_rid_.fetch_add(1);
-  void *addr = reinterpret_cast<void *>(kVolatileSttAddr + vrid_ * kRegionSize);
-  shm_region_ = std::make_unique<MappedRegion>(shm_obj, rwmode, 0, size_, addr);
-}
-
-void Region::unmap() noexcept {
-  shm_region_.reset();
-  vrid_ = INVALID_VRID;
-}
-
-Region::~Region() noexcept {
-  unmap();
-  free();
-}
-
-void Region::free() noexcept {
-  SharedMemObj::remove(utils::get_region_name(pid_, prid_).c_str());
-}
-
 ResourceManager::ResourceManager(BaseSoftMemPool *cpool,
                                  const std::string &daemon_name) noexcept
     : cpool_(cpool), id_(get_unique_id()), region_limit_(0),
       txqp_(std::make_shared<QSingle>(utils::get_sq_name(daemon_name, false),
                                       false),
-            std::make_shared<QSingle>(utils::get_ackq_name(daemon_name, id_),
+          std::make_shared<QSingle>(utils::get_ackq_name(daemon_name, id_),
                                       true)),
       rxqp_(std::to_string(id_), true), stop_(false), nr_pending_(0), stats_() {
   handler_thd_ = std::make_shared<std::thread>([&]() { pressure_handler(); });
   if (!cpool_)
     cpool_ = CachePool::global_cache_pool();
   assert(cpool_);
-  connect(daemon_name);
+  connect(daemon_name); // 连接完需要对CXLRMT进行初始化
 }
 
 ResourceManager::~ResourceManager() noexcept {
@@ -99,21 +58,21 @@ bool ResourceManager::reclaim_trigger() noexcept {
 
 int64_t ResourceManager::reclaim_target() noexcept {
   constexpr static float kAvailRatioThresh = 0.01;
-  int64_t nr_avail = NumRegionAvail();
+  int64_t nr_avail = NumRegionAvail(); // limit - inUse
   int64_t nr_limit = NumRegionLimit();
   if (nr_limit <= 1)
     return 0;
   int64_t target_avail = nr_limit * kAvailRatioThresh;
   int64_t nr_to_reclaim = nr_pending_;
-  auto headroom = std::max<int64_t>(reclaim_headroom(), target_avail);
+  auto headroom = std::max<int64_t>(reclaim_headroom(), target_avail); // 2
   if (nr_avail <= headroom)
-    nr_to_reclaim += std::max(headroom - nr_avail, 2l);
-  nr_to_reclaim = std::min(nr_to_reclaim, nr_limit);
+    nr_to_reclaim += std::max(headroom - nr_avail, 2l); // 当available小于headroom时导致reclaim数量增加
+  nr_to_reclaim = std::min(nr_to_reclaim, nr_limit); // 给出建议回收的量
   return nr_to_reclaim;
 }
 
 int32_t ResourceManager::reclaim_headroom() noexcept {
-  auto scale_factor = 5;
+  auto scale_factor = 5; // 评估不同应用对于内存回收的收益
   if (stats_.alloc_tput > 1000 || stats_.alloc_tput > 8 * stats_.reclaim_tput)
     scale_factor = 20;
   else if (stats_.alloc_tput > 500 ||
@@ -125,6 +84,7 @@ int32_t ResourceManager::reclaim_headroom() noexcept {
       region_limit_ * 0.5,
       std::max<int32_t>(32,
                         scale_factor * stats_.reclaim_dur * stats_.alloc_tput));
+  // MIDAS_LOG(kDebug) << "region_limit_: " << region_limit_ << ", others: " << scale_factor << " " << stats_.reclaim_dur << " " << stats_.alloc_tput;
   stats_.headroom = headroom;
   // MIDAS_LOG(kInfo) << "headroom: " << headroom;
   return headroom;
@@ -247,10 +207,10 @@ void ResourceManager::pressure_handler() {
 
     MIDAS_LOG(kDebug) << "PressureHandler recved msg " << msg.op;
     switch (msg.op) {
-    case UPDLIMIT:
+    case UPDLIMIT: // 5
       do_update_limit(msg);
       break;
-    case PROF_STATS:
+    case PROF_STATS: // 8
       do_profile_stats(msg);
       break;
     case FORCE_RECLAIM:
@@ -272,7 +232,7 @@ void ResourceManager::do_update_limit(CtrlMsg &msg) {
   region_limit_ = new_region_limit;
 
   CtrlMsg ack{.op = CtrlOpCode::UPDLIMIT, .ret = CtrlRetCode::MEM_SUCC};
-  if (NumRegionAvail() < 0) { // under memory pressure
+  if (NumRegionAvail() < 0) { // under memory pressure 这个part似乎从来没有触发过
     auto before_usage = NumRegionInUse();
     MIDAS_LOG_PRINTF(kInfo, "Memory shrinkage: %ld to reclaim (%ld->%ld).\n",
                      -NumRegionAvail(), NumRegionInUse(), NumRegionLimit());
@@ -326,6 +286,7 @@ bool ResourceManager::reclaim() {
 
   nr_pending_++;
   cpool_->get_evacuator()->signal_gc();
+  MIDAS_LOG(kDebug) << "reclaim"; // 内存不足走的不是这个路线
   for (int rep = 0; rep < kReclaimRepeat; rep++) {
     {
       std::unique_lock<std::mutex> ul(mtx_);
@@ -393,34 +354,49 @@ retry:
     return -1;
   }
   retry_cnt++;
-  if (!overcommit && reclaim_trigger()) {
+  prof_nr_stats();
+  // 在第三次分配的时候，nr_target = 2 触发trigger
+  if (!overcommit && reclaim_trigger()) { // 由于reclaim被触发，因而导致gc事件的发生
     if (NumRegionAvail() <= 0) { // block waiting for reclamation
-      if (kEnableFaultHandler && retry_cnt >= kMaxAllocRetry / 2)
+      if (kEnableFaultHandler && retry_cnt >= kMaxAllocRetry / 2){ // 多次回收失败就要开始强制回收
+        // MIDAS_LOG(kDebug) << "force reclaim";
         force_reclaim();
-      else
+      }
+      else{
+        // MIDAS_LOG(kDebug) << "normal reclaim";
         reclaim();
-    } else
+      }
+        
+    } else{ // 由于NumRegionAvail = 2，所以走了这个路线
+      MIDAS_LOG(kDebug) << "signal gc";
       cpool_->get_evacuator()->signal_gc();
+    }
+      
   }
 
+  MIDAS_LOG(kDebug) << "reclaim over and start alloc";
   // 1) Fast path. Allocate from freelist
   std::unique_lock<std::mutex> lk(mtx_);
   if (!freelist_.empty()) {
     auto region = freelist_.back();
     freelist_.pop_back();
-    region->map();
+    region->map(); // 这里只是做一个重新的映射
     int64_t region_id = region->ID();
     region_map_[region_id] = region;
     overcommit ? stats_.nr_evac_alloced++ : stats_.nr_alloced++;
     return region_id;
   }
   // 2) Local alloc path. Do reclamation and try local allocation again
+  // 先回收，再分配，goto上面
+
+  // MIDAS_LOG(kDebug) << "second path";
   if (!overcommit && NumRegionAvail() <= 0) {
     lk.unlock();
-    std::this_thread::sleep_for(kAllocRetryDelay);
+    std::this_thread::sleep_for(kAllocRetryDelay); // 稍微有点间隔用于回收内存
     goto retry;
   }
   // 3) Remote alloc path. Comm with daemon and try to alloc
+  // MIDAS_LOG(kDebug) << "third path";
   CtrlMsg msg{.id = id_,
               .op = overcommit ? CtrlOpCode::OVERCOMMIT : CtrlOpCode::ALLOC,
               .mmsg = {.size = kRegionSize}};
@@ -429,6 +405,7 @@ retry:
   unsigned prio;
   CtrlMsg ret_msg;
   int ret = txqp_.recv(&ret_msg, sizeof(ret_msg));
+  MIDAS_LOG(kDebug) << "msg receive over";
   if (ret) {
     MIDAS_LOG(kError) << "Allocation error: " << ret;
     return -1;
@@ -438,17 +415,20 @@ retry:
     goto retry;
   }
 
-  int64_t region_id = ret_msg.mmsg.region_id;
-  assert(region_map_.find(region_id) == region_map_.cend());
+  int64_t region_id = ret_msg.mmsg.region_id; // daemon确实回收到了内存，并告知了region_id
+  assert(region_map_.find(region_id) == region_map_.cend()); // 确定没有被分配过
 
   auto region = std::make_shared<Region>(id_, region_id);
   region_map_[region_id] = region;
   assert(region->Size() == ret_msg.mmsg.size);
   assert((reinterpret_cast<uint64_t>(region->Addr()) & (~kRegionMask)) == 0);
 
+  // 回收环节出现后 就无法执行这里的逻辑了
   MIDAS_LOG(kDebug) << "Allocated region: " << region->Addr() << " ["
                     << region->Size() << "]";
   overcommit ? stats_.nr_evac_alloced++ : stats_.nr_alloced++;
+
+  MIDAS_LOG(kDebug) << "region alloc over";
   return region_id;
 }
 
@@ -460,7 +440,8 @@ void ResourceManager::FreeRegion(int64_t rid) noexcept {
     MIDAS_LOG(kError) << "Invalid region_id " << rid;
     return;
   }
-  int64_t freed_bytes = free_region(region_iter->second, false);
+  MIDAS_LOG(kDebug) << "ResourceManager FreeRegion";
+  int64_t freed_bytes = free_region(region_iter->second, false); // 在这里触发的
   if (freed_bytes == -1) {
     MIDAS_LOG(kError) << "Failed to free region " << rid;
   }
@@ -503,9 +484,9 @@ inline size_t ResourceManager::free_region(std::shared_ptr<Region> region,
     freelist_.emplace_back(region);
   } else {
     CtrlMsg msg{.id = id_,
-                .op = CtrlOpCode::FREE,
+                .op = CtrlOpCode::FREE, // 4
                 .mmsg = {.region_id = rid, .size = rsize}};
-    txqp_.send(&msg, sizeof(msg));
+    txqp_.send(&msg, sizeof(msg)); // 发回消息的是client
 
     CtrlMsg ack;
     unsigned prio;
@@ -520,6 +501,7 @@ inline size_t ResourceManager::free_region(std::shared_ptr<Region> region,
   if (NumRegionAvail() > 0)
     cv_.notify_all();
   MIDAS_LOG(kDebug) << "region_map size: " << region_map_.size();
+  exit(-1); // czq 断点调试
   return rsize;
 }
 

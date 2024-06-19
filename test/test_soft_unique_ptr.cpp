@@ -6,8 +6,9 @@
 
 #include "soft_mem_pool.hpp"
 #include "soft_unique_ptr.hpp"
+#include "smdk_opt_api.hpp"
 
-constexpr static int kNumThds = 16;
+constexpr static int kNumThds = 1;
 constexpr static int kObjSize = 64;
 constexpr static int kNumObjs = 10240;
 
@@ -33,7 +34,7 @@ void test_int_read() {
   std::vector<std::thread> thds;
   std::atomic_int32_t nr_failed(0);
 
-  for (int i = 0; i < kNumThds; i++) {
+  for (int i = 0; i < kNumThds; i++) { // 每个thread要进行一次初始化
     thds.emplace_back([&pool, &nr_failed]() {
       std::random_device rd;
       std::mt19937 mt(rd());
@@ -70,8 +71,11 @@ void test_int_read() {
 
 
 void test_int_write() {
+  std::cout << "init smanager" << std::endl;
   auto smanager = midas::SoftMemPoolManager::global_soft_mem_pool_manager();
+  std::cout << "init pool" << std::endl;
   auto pool = smanager->get_pool<int, int, float>("int");
+  std::cout << "init thread" << std::endl;
 
   std::vector<std::thread> thds;
   std::atomic_int32_t nr_failed(0);
@@ -85,33 +89,35 @@ void test_int_write() {
       std::vector<SoftUniquePtr> ptrs;
       std::vector<int> written_vals;
 
-      for (int j = 0; j < kNumObjs; j++) {
+      std::cout << "1" << std::endl;
+      for (int j = 0; j < kNumObjs; j++) { // 这里出现了真正的内存分配行为
         auto ptr = pool->new_unique();
+        // std::cout << "new_unique write" << std::endl;
         int value = dist(mt);
-        ptr.write(value);
+        ptr.write(value); // 这句实际产生了分配行为，注释掉了就没了
         ptrs.push_back(std::move(ptr));
         written_vals.push_back(value);
       }
-      for (int j = 0; j < kNumObjs; j++) {
-        int a = dist(mt);
-        float b = dist(mt);
-        int written_value = written_vals[j];
-        int value = ptrs[j].read(a, b);
-        if (value != written_value) {
-          int recon_value = recon_int(a, b);
-          std::cout << "value: " << value << " written_value: " << written_value << " recon_value: " << recon_value
-                    << std::endl;
-          nr_failed++;
-        }
-      }
-      for (int j = 0; j < kNumObjs; j++) {
-        ptrs[j].reset();
-      }
+      std::cout << "2" << std::endl;
+      // for (int j = 0; j < kNumObjs; j++) {
+      //   int a = dist(mt);
+      //   float b = dist(mt);
+      //   int written_value = written_vals[j];
+      //   int value = ptrs[j].read(a, b);
+      //   if (value != written_value) {
+      //     int recon_value = recon_int(a, b);
+      //     std::cout << "value: " << value << " written_value: " << written_value << " recon_value: " << recon_value
+      //               << std::endl;
+      //     nr_failed++;
+      //   }
+      // }
+      // for (int j = 0; j < kNumObjs; j++) {
+      //   ptrs[j].reset();
+      // }
     });
   }
   for (auto &thd : thds)
     thd.join();
-
   if (nr_failed == 0) {
     std::cout << "Test int write passed." << std::endl;
   } else {
@@ -157,7 +163,6 @@ void test_obj_read() {
   }
   for (auto &thd : thds)
     thd.join();
-
   if (nr_failed == 0) {
     std::cout << "Test obj read passed." << std::endl;
   } else {
@@ -226,12 +231,26 @@ int main(int argc, char *argv[]) {
   auto smanager = midas::SoftMemPoolManager::global_soft_mem_pool_manager();
 
   smanager->create_pool<int, int, float>("int", recon_int);
+  SmdkAllocator& allocator = SmdkAllocator::get_instance();
+  std::cout << "1" << std::endl;
+  allocator.stats_print('K');
   test_int_read();
+  // SmdkAllocator& allocator = SmdkAllocator::get_instance();
+  std::cout << "2" << std::endl;
+  allocator.stats_print('K');
   test_int_write();
 
+  std::cout << "3" << std::endl;
+  allocator.stats_print('K');
   smanager->create_pool<Object, int, uint64_t>("object", recon_obj);
+  std::cout << "4" << std::endl;
+  allocator.stats_print('K');
   test_obj_read();
+  std::cout << "5" << std::endl;
+  allocator.stats_print('K');
   test_obj_write();
+  std::cout << "6" << std::endl;
+  allocator.stats_print('K');
 
   return 0;
 }

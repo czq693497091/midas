@@ -11,6 +11,7 @@ inline CachePool::CachePool(std::string name) : construct_(nullptr) {
 
 inline CachePool::~CachePool() {}
 
+// 这个Pool后面似乎也需要单独给cxl来维护一个
 inline CachePool *CachePool::global_cache_pool() {
   static std::mutex mtx_;
   static CachePool *pool_ = nullptr;

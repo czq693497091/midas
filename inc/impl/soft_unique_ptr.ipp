@@ -57,8 +57,11 @@ T SoftUniquePtr<T, ReconArgs...>::read(ReconArgs... args) {
 
 template <typename T, typename... ReconArgs>
 void SoftUniquePtr<T, ReconArgs...>::write(const T &value) {
-  if (ptr_.null())
-    pool_->alloc_to(sizeof(T), &ptr_);
+  if (ptr_.null()){
+    // std::cout << "ptr null" << std::endl;
+    pool_->alloc_to(sizeof(T), &ptr_); // czq: 所以就是在这里因而只分配了一次
+  }
+   
   ptr_.copy_from(&value, sizeof(T));
 }
 

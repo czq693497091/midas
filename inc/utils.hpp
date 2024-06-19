@@ -21,7 +21,7 @@ constexpr static bool kEnableFaultHandler = true;
 /** Log Structured Allocator related */
 constexpr static uint32_t kLogSegmentSize = kHugePageSize;
 constexpr static uint64_t kLogSegmentMask = ~(kLogSegmentSize - 1ull);
-constexpr static uint32_t kRegionSize = kLogSegmentSize;
+constexpr static uint32_t kRegionSize = kLogSegmentSize; // region = 2MB
 constexpr static uint64_t kRegionMask = ~(kRegionSize - 1ull);
 constexpr static uint64_t kMaxSoftMemLimit = 1024 * (1ull << 30); // 1TB
 constexpr static uint64_t kMaxRegionNum = kMaxSoftMemLimit / kRegionSize;
@@ -29,7 +29,9 @@ constexpr static uint64_t kMaxRegionNum = kMaxSoftMemLimit / kRegionSize;
 constexpr static int32_t kMaxAliveBytes = std::numeric_limits<int32_t>::max();
 /** Evacuator related */
 constexpr static float kAliveThreshHigh = 0.9;
-constexpr static int kNumEvacThds = 12;
+// constexpr static int kNumEvacThds = 12;
+constexpr static int kNumEvacThds = 1;
+
 constexpr static int kForceReclaimThresh = 512; // #(regions to be reclaimed)
 /** High-Level Data Structures & Interfaces related */
 constexpr static bool kEnableConstruct = true;

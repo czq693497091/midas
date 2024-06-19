@@ -16,7 +16,7 @@ struct VCEntry {
 #pragma pack(push, 1)
   ObjectPtr *optr;
   size_t size;
-  void *construct_args;
+  void *construct_args; // evacuator的时候这里是nullptr
 #pragma pack(pop)
   VCEntry();
   VCEntry(ObjectPtr *optr_, void *construct_args_);

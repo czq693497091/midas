@@ -1,5 +1,5 @@
 #pragma once
-
+#include "shm_utils.hpp"
 namespace midas {
 
 inline RegionListReader::RegionListReader(uint64_t uuid) : uuid_(uuid) {

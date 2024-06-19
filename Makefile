@@ -6,6 +6,13 @@ CXXFLAGS +=  -fPIC
 CXX = g++
 LDXX = g++
 
+SMDK_ROOT_DIR := /home/czq/SMDK
+CXLMALLOC_DIR=$(SMDK_ROOT_DIR)/lib/smdk_allocator
+PNMLIB_DIR=$(SMDK_ROOT_DIR)/lib/PNMLibrary-pnm-v3.0.0/PNMLibrary
+override CXXFLAGS += -I$(CXLMALLOC_DIR)/opt_api/include -I$(SMDK_ROOT_DIR)/src/test/include -I$(PNMLIB_DIR)/build/libs/include
+override LDFLAGS += -L$(CXLMALLOC_DIR)/lib/
+override LIBS += -lc -lnuma -lpthread -lsmalloc -lpnm #for dynamic link
+
 INC += -Iinc
 
 override LDFLAGS += -lrt -lpthread
@@ -84,6 +91,9 @@ test_feat_extractor_obj = $(test_feat_extractor_src:.cpp=.o)
 test_feat_extractor_kv_src = test/test_feat_extractor_kv.cpp
 test_feat_extractor_kv_obj = $(test_feat_extractor_kv_src:.cpp=.o)
 
+test_cxl_alloc_src = test/test_cxl_alloc.cpp
+test_cxl_alloc_obj = $(test_cxl_alloc_src:.cpp=.o)
+
 .PHONY: all bin lib daemon clean
 
 all: bin lib daemon
@@ -100,7 +110,7 @@ bin: bin/test_resource_manager bin/test_object bin/test_parallel_evacuator \
 	bin/test_sighandler \
 	bin/test_memcpy \
 	bin/test_soft_unique_ptr \
-	bin/test_softptr_read_cost bin/test_softptr_write_cost
+	bin/test_softptr_read_cost bin/test_softptr_write_cost bin/test_cxl_alloc
 
 # bin/test_feat_extractor bin/test_feat_extractor_kv
 # bin/test_concurrent_evacuator bin/test_concurrent_evacuator2 bin/test_concurrent_evacuator3
@@ -108,79 +118,82 @@ bin: bin/test_resource_manager bin/test_object bin/test_parallel_evacuator \
 daemon: bin/daemon_main
 
 bin/daemon_main: $(daemon_main_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_resource_manager: $(test_resource_manager_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_object: $(test_object_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_slab: $(test_slab_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_sync_hashmap: $(test_sync_hashmap_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_sync_list: $(test_sync_list_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_hashmap_clear: $(test_hashmap_clear_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_log: $(test_log_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS) 
 
 bin/test_large_alloc: $(test_large_alloc_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_parallel_evacuator: $(test_parallel_evacuator_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_concurrent_evacuator: $(test_concurrent_evacuator_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_concurrent_evacuator2: $(test_concurrent_evacuator2_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_concurrent_evacuator3: $(test_concurrent_evacuator3_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_skewed_hashmap: $(test_skewed_hashmap_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_sighandler: $(test_sighandler_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_memcpy: $(test_memcpy_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_cache_manager: $(test_cache_manager_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_victim_cache: $(test_victim_cache_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_sync_kv: $(test_sync_kv_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
-
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
+ 
 bin/test_ordered_set: $(test_ordered_set_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_batched_kv: $(test_batched_kv_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_fs_shim: $(test_fs_shim_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_softptr_read_cost: $(test_softptr_read_cost_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_softptr_write_cost: $(test_softptr_write_cost_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 bin/test_soft_unique_ptr: $(test_soft_unique_ptr_obj) $(lib_obj)
-	$(LDXX) -o $@ $^ $(LDFLAGS)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
+
+bin/test_cxl_alloc: $(test_cxl_alloc_obj) $(lib_obj)
+	$(LDXX) -o $@ $^ $(LDFLAGS) $(LIBS) $(CXXFLAGS)
 
 lib/libmidas++.a: $(lib_obj)
 	mkdir -p lib
@@ -193,7 +206,7 @@ lib/libmidas++.a: $(lib_obj)
 # 	$(LDXX) -o $@ $^ -lcrypto $(LDFLAGS)
 
 %.o: %.cpp Makefile
-	$(CXX) $(CXXFLAGS) $(INC) -MMD -MP -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(LIBS) $(INC) -MMD -MP -c $< -o $@
 
 ifneq ($(MAKECMDGOALS),clean)
 -include $(dep)

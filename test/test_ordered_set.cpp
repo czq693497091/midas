@@ -11,6 +11,7 @@
 
 #include "resource_manager.hpp"
 #include "sync_kv.hpp"
+#include"smdk_opt_api.hpp"
 
 #define TEST_OBJECT 0
 #define TEST_LARGE 0
@@ -177,6 +178,9 @@ void gen_workload() {
 }
 
 int main(int argc, char *argv[]) {
+  SmdkAllocator& allocator = SmdkAllocator::get_instance();
+  std::cout << "1" << std::endl;
+  allocator.stats_print('K');
   auto *rmanager = midas::ResourceManager::global_manager();
   rmanager->UpdateLimit(kCacheSize);
 
@@ -188,7 +192,8 @@ int main(int argc, char *argv[]) {
   std::atomic_int32_t nr_err{0};
 
   gen_workload();
-
+  std::cout << "2" << std::endl;
+  allocator.stats_print('K');
   std::vector<std::thread> thds;
   for (int tid = 0; tid < kNumInsertThds; tid++) {
     thds.push_back(std::thread([&, tid = tid]() {
@@ -211,6 +216,8 @@ int main(int argc, char *argv[]) {
     thd.join();
   thds.clear();
 
+  std::cout << "3" << std::endl;
+  allocator.stats_print('K');
   if (nr_err == 0)
     std::cout << "Set test passed!" << std::endl;
   else
@@ -256,7 +263,8 @@ int main(int argc, char *argv[]) {
   for (auto &thd : thds)
     thd.join();
   thds.clear();
-
+  std::cout << "4" << std::endl;
+  allocator.stats_print('K');
   if (nr_nequal == 0)
     std::cout << "Get test passed! " << nr_succ << " passed, " << nr_err
               << " failed. " << nr_equal << "/" << nr_equal + nr_nequal

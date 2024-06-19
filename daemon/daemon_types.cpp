@@ -123,7 +123,7 @@ bool Client::free_region(int64_t region_id) {
   if (region_iter != regions.end()) {
     /* Successfully find the region to be freed */
     region_iter->second->get_size(actual_size);
-    regions.erase(region_id);
+    regions.erase(region_id);  // client的regions (map) 记录了所有已经分配的region
     SharedMemObj::remove(utils::get_region_name(id, region_id).c_str());
     region_cnt_--;
 
@@ -252,6 +252,7 @@ Daemon::Daemon(const std::string ctrlq_name)
       region_limit_(kMaxRegions), terminated_(false),
       status_(MemStatus::NORMAL), policy(kDefaultPolicy), monitor_(nullptr),
       profiler_(nullptr), rebalancer_(nullptr) {
+  // 后台默认monitor profiler和rebalancer三个线程维护
   monitor_ = std::make_shared<std::thread>([&] { monitor(); });
   if (kEnableProfiler)
     profiler_ = std::make_shared<std::thread>([&] { profiler(); });
@@ -462,13 +463,13 @@ void Daemon::monitor() {
       policy = static_cast<Policy>(new_policy);
     }
 
-    std::this_thread::sleep_for(std::chrono::seconds(kMonitorInteral));
+    std::this_thread::sleep_for(std::chrono::seconds(kMonitorInteral)); // 每1us检查下内存额度是否变化
   }
 }
 
 void Daemon::profiler() {
   while (!terminated_) {
-    std::this_thread::sleep_for(std::chrono::seconds(kProfInterval));
+    std::this_thread::sleep_for(std::chrono::seconds(kProfInterval)); // 5us定期分析下
     std::atomic_int_fast32_t nr_active_clients{0};
     std::mutex dead_mtx;
     std::vector<uint64_t> dead_clients;
@@ -497,7 +498,7 @@ void Daemon::profiler() {
     ul.unlock();
 
     // invoke rebalancer
-    if (region_cnt_ < region_limit_) {
+    if (region_cnt_ < region_limit_) { // 可扩容阶段
       if (nr_active_clients > 0) {
         std::unique_lock<std::mutex> ul(rbl_mtx_);
         status_ = MemStatus::NEED_EXPAND;
@@ -938,16 +939,16 @@ void Daemon::serve() {
     case DISCONNECT:
       do_disconnect(msg);
       break;
-    case ALLOC:
+    case ALLOC: // 2
       do_alloc(msg);
       break;
     case OVERCOMMIT:
       do_overcommit(msg);
       break;
-    case FREE:
+    case FREE: // 4
       do_free(msg);
       break;
-    case UPDLIMIT_REQ:
+    case UPDLIMIT_REQ: // 6
       do_update_limit_req(msg);
       break;
     case SET_WEIGHT:

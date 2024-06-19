@@ -11,6 +11,8 @@
 #include "logging.hpp"
 #include "perf.hpp"
 #include "time.hpp"
+#include "smdk_opt_api.hpp"
+
 
 namespace midas {
 
@@ -116,7 +118,7 @@ std::vector<Trace> Perf::benchmark(std::vector<PerfRequestWithTime> *all_reqs,
             Trace trace;
             trace.absl_start_us = Time::get_us();
             trace.start_us = trace.absl_start_us - start_us;
-            bool ok = adapter_.serve_req(tid, req.req.get());
+            bool ok = adapter_.serve_req(tid, req.req.get()); // 这里实际调用了APP的serve_req函数，进而调用了compute/reconstruct
             trace.duration_us = Time::get_us() - start_us - trace.start_us;
             if (ok) {
               traces.push_back(trace);
@@ -152,7 +154,11 @@ void Perf::run(uint32_t num_threads, double target_kops, uint64_t duration_us,
   gen_reqs(all_perf_reqs, num_threads, target_kops, duration_us);
   MIDAS_LOG(kInfo) << "Finish generating perf requests...";
   benchmark(all_warmup_reqs, num_threads, miss_ddl_thresh_us);
+  SmdkAllocator& allocator = SmdkAllocator::get_instance();
+  std::cout << "benchmark stats 1" << std::endl;
+  allocator.stats_print('K'); // 到这里都没变
 
+  // czq: benchmark生成前的环节都不需要看
   bool stop = false;
   std::unique_ptr<std::thread> report_thd;
   if (kEnableReporter) {
@@ -165,19 +171,28 @@ void Perf::run(uint32_t num_threads, double target_kops, uint64_t duration_us,
       dump_tput();
     });
   }
-
+  std::cout << "benchmark stats 2" << std::endl;
+  allocator.stats_print('K'); // 到这里都没变
   traces_ =
-      std::move(benchmark(all_perf_reqs, num_threads, miss_ddl_thresh_us));
+      std::move(benchmark(all_perf_reqs, num_threads, miss_ddl_thresh_us)); // 这里执行的环节实际产生了内存分配
 
+  std::cout << "benchmark stats 3" << std::endl;
+  allocator.stats_print('K'); // 到这里已经内存占用都上去了
   stop = true;
   if (report_thd)
     report_thd->join();
 
+  std::cout << "benchmark stats 4" << std::endl; 
+  allocator.stats_print('K'); 
   auto real_duration_us =
       std::accumulate(traces_.begin(), traces_.end(), static_cast<uint64_t>(0),
                       [](uint64_t ret, Trace t) {
                         return std::max(ret, t.start_us + t.duration_us);
                       });
+  
+  std::cout << "benchmark stats 5" << std::endl;
+  allocator.stats_print('K'); // 到这里都没变
+
   real_kops_ = static_cast<double>(traces_.size()) / (real_duration_us / 1000);
 }
 

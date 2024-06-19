@@ -16,49 +16,53 @@
 #include "qpair.hpp"
 #include "shm_types.hpp"
 #include "utils.hpp"
+#include "region.hpp"
+#include "cxl_region.hpp"
 
 namespace midas {
 
 using SharedMemObj = boost::interprocess::shared_memory_object;
 using MsgQueue = boost::interprocess::message_queue;
 using MappedRegion = boost::interprocess::mapped_region;
+using Region = midas::Region;
+// class Region {
+// public:
+//   Region(uint64_t pid, uint64_t region_id) noexcept;
+//   ~Region() noexcept;
 
-class Region {
-public:
-  Region(uint64_t pid, uint64_t region_id) noexcept;
-  ~Region() noexcept;
+//   void map() noexcept;
+//   void unmap() noexcept;
+//   void free() noexcept;
 
-  void map() noexcept;
-  void unmap() noexcept;
-  void free() noexcept;
+//   inline bool mapped() const noexcept { return vrid_ == INVALID_VRID; };
 
-  inline bool mapped() const noexcept { return vrid_ == INVALID_VRID; };
+//   inline friend bool operator<(const Region &lhs, const Region &rhs) noexcept {
+//     return lhs.prid_ < rhs.prid_;
+//   }
 
-  inline friend bool operator<(const Region &lhs, const Region &rhs) noexcept {
-    return lhs.prid_ < rhs.prid_;
-  }
+//   inline void *Addr() const noexcept {
+//     return reinterpret_cast<void *>(
+//         vrid_ == INVALID_VRID ? INVALID_VRID
+//                               : kVolatileSttAddr + vrid_ * kRegionSize);
+//   }
+//   inline uint64_t ID() const noexcept { return prid_; }
+//   inline int64_t Size() const noexcept { return size_; }
 
-  inline void *Addr() const noexcept {
-    return reinterpret_cast<void *>(
-        vrid_ == INVALID_VRID ? INVALID_VRID
-                              : kVolatileSttAddr + vrid_ * kRegionSize);
-  }
-  inline uint64_t ID() const noexcept { return prid_; }
-  inline int64_t Size() const noexcept { return size_; }
+// private:
+//   // generating unique name for the region shared memory file
+//   uint64_t pid_;
+//   uint64_t prid_; // physical memory region id
+//   uint64_t vrid_; // mapped virtual memory region id
+//   std::unique_ptr<MappedRegion> shm_region_; // czq: 如果假设是远内存对象则无法再使用MappedRegion
+//   std::unique_ptr<MappedRegion, std::function<void(MappedRegion*)>> cxl_shm_region_; // czq: 需要换成基于SMDK allocator的内存分配器
 
-private:
-  // generating unique name for the region shared memory file
-  uint64_t pid_;
-  uint64_t prid_; // physical memory region id
-  uint64_t vrid_; // mapped virtual memory region id
-  std::unique_ptr<MappedRegion> shm_region_;
-  int64_t size_; // int64_t to adapt to boost::interprocess::offset_t
+//   int64_t size_; // int64_t to adapt to boost::interprocess::offset_t
 
-  static std::atomic_int64_t
-      global_mapped_rid_; // never reuse virtual addresses
+//   static std::atomic_int64_t
+//       global_mapped_rid_; // never reuse virtual addresses
 
-  constexpr static uint64_t INVALID_VRID = -1ul;
-};
+//   constexpr static uint64_t INVALID_VRID = -1ul;
+// };
 
 class BaseSoftMemPool; // defined in base_soft_mem_pool.hpp
 class ResourceManager {
@@ -79,6 +83,7 @@ public:
   uint64_t NumRegionInUse() const noexcept;
   uint64_t NumRegionLimit() const noexcept;
   int64_t NumRegionAvail() const noexcept;
+  void prof_nr_stats();
 
   /** trigger evacuation */
   bool reclaim_trigger() noexcept;
@@ -111,17 +116,19 @@ private:
 
   BaseSoftMemPool *cpool_;
 
-  // inter-process comm
+  // inter-process comm，这块如果RDMA被引入的话问题会进一步的复杂化
+  // 但这个应该是resourceManager本身就该拥有的属性
   uint64_t id_;
   std::mutex mtx_;
   std::condition_variable cv_;
   QPair txqp_;
   QPair rxqp_;
 
+  // 下面这些已经更侧重region的管理了
   // regions
   uint64_t region_limit_;
-  std::map<int64_t, std::shared_ptr<Region>> region_map_;
-  std::list<std::shared_ptr<Region>> freelist_;
+  std::map<int64_t, std::shared_ptr<Region>> region_map_; // 这些参数都需要一个cxl专属的
+  std::list<std::shared_ptr<Region>> freelist_; // 前面的stashed_list是针对每个allocator独自拥有的，这个是针对整个allocator所持有的
 
   std::atomic_int_fast64_t nr_pending_;
   std::shared_ptr<std::thread> handler_thd_;

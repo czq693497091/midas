@@ -34,6 +34,8 @@ public:
   void inc_accessed() noexcept;
   void dec_accessed() noexcept;
   void clr_accessed() noexcept;
+  int64_t get_accessed() noexcept;
+
   bool is_evacuate() const noexcept;
   void set_evacuate() noexcept;
   void clr_evacuate() noexcept;
@@ -62,7 +64,7 @@ private:
 static_assert(sizeof(MetaObjectHdr) <= sizeof(uint64_t),
               "GenericObjHdr is not correctly aligned!");
 
-struct SmallObjectHdr {
+struct SmallObjectHdr { // 可以说这个是真正的SoftPtr，对应论文图5
   // Format:
   //  I) |P(1b)|S(1b)|E(1b)|M(1b)|A(2b)|  Obj Size(10b)  |  Reverse Ref (48b)  |
   //                   P: present bit.
@@ -93,9 +95,9 @@ public:
 
 private:
 #pragma pack(push, 1)
-  uint64_t rref : 48; // reverse reference to the single to-be-updated
+  uint64_t rref : 48; // reverse reference to the single to-be-updated，通过header指向对应Objectptr？
   uint16_t size : 10; // object size / 8 (8 Bytes is the base unit)
-  uint8_t flags : 6;
+  uint8_t flags : 6; // P,S,E,M,A
 #pragma pack(pop)
 };
 
