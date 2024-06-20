@@ -6,6 +6,7 @@
 #include "shm_types.hpp"
 #include "time.hpp"
 #include "victim_cache.hpp"
+#include "cxl_region.hpp"
 
 namespace midas {
 
@@ -49,8 +50,12 @@ protected:
   std::shared_ptr<LogAllocator> allocator_;
   std::unique_ptr<Evacuator> evacuator_;
 
+
+
+
   friend class CacheManager;
   friend class ResourceManager;
+  friend class CXLResourceManagerTool;
 
   static constexpr uint64_t kVCacheSizeLimit = 64 * 1024 * 1024; // 64 MB
   static constexpr uint64_t kVCacheCountLimit = 500000;

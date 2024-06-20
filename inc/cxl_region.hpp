@@ -19,6 +19,7 @@
 #include "qpair.hpp"
 #include "shm_types.hpp"
 #include "utils.hpp"
+#include "base_soft_mem_pool.hpp"
 
 namespace midas
 {
@@ -35,6 +36,7 @@ constexpr static int32_t kCXLMonitorTimeout = 1; // seconds
 constexpr static int32_t kCXLDisconnTimeout = 3; // seconds
 constexpr static bool kCXLEnableFreeList = true;
 constexpr static int32_t kCXLFreeListSize = 512;
+
 
 class CXLRegion
 {
@@ -70,8 +72,7 @@ private:
 
     int64_t size_; // int64_t to adapt to boost::interprocess::offset_t
 
-    static std::atomic_int64_t
-        global_mapped_rid_; // never reuse virtual addresses
+    static std::atomic_int64_t global_mapped_rid_; // never reuse virtual addresses
 
     constexpr static uint64_t INVALID_VRID = -1ul;
 };
@@ -79,10 +80,10 @@ private:
 // 这个不需要ResourceManager那些初始构造函数
 class CXLResourceManagerTool 
 {
-    CXLResourceManagerTool(BaseSoftMemPool *cpool = nullptr,
+    CXLResourceManagerTool(BaseSoftMemPool *cpool,
+                                 const std::string &daemon_name) noexcept;
+    CXLResourceManagerTool(BaseSoftMemPool *cpool,
                         uint64_t id, 
-                        std::mutex mtx, 
-                        std::condition_variable cv,
                         QPair txqp_,
                         QPair rxqp_) noexcept; // 这里的内容除了cpool直接复用
     

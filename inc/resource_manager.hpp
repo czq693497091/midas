@@ -17,7 +17,7 @@
 #include "shm_types.hpp"
 #include "utils.hpp"
 #include "region.hpp"
-#include "cxl_region.hpp"
+// #include "cxl_region.hpp"
 
 namespace midas {
 
@@ -115,7 +115,7 @@ private:
   bool force_reclaim();
 
   BaseSoftMemPool *cpool_;
-
+  // CXLResourceManagerTool cxl_rmt;
   // inter-process comm，这块如果RDMA被引入的话问题会进一步的复杂化
   // 但这个应该是resourceManager本身就该拥有的属性
   uint64_t id_;
@@ -154,6 +154,8 @@ private:
     float accum_evac_dur{0};
     float accum_nr_reclaimed{0};
   } stats_;
+
+
 };
 
 } // namespace midas

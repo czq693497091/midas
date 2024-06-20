@@ -25,6 +25,11 @@
 namespace midas
 {
 
+std::atomic_int64_t CXLRegion::global_mapped_rid_{0};
+
+
+class BaseSoftMemPool; // defined in base_soft_mem_pool.hpp
+
     CXLRegion::CXLRegion(uint64_t pid, uint64_t region_id) noexcept
         : pid_(pid), prid_(region_id), vrid_(INVALID_VRID)
     {
@@ -56,24 +61,43 @@ namespace midas
         vrid_ = INVALID_VRID;
     }
 
-    CXLRegion::~CXLRegion() noexcept
-    {
-        unmap();
-        free();
-    }
 
     void CXLRegion::free() noexcept
     {
         SharedMemObj::remove(utils::get_region_name(pid_, prid_).c_str());
     }
 
-    CXLResourceManagerTool::CXLResourceManagerTool(BaseSoftMemPool *cpool = nullptr,
+    // 这些变量有些是不是不需要执行，因为rm里这些成员会先自行销毁
+    CXLResourceManagerTool::~CXLResourceManagerTool(){
+        stop_ = true;
+        // handler_thd_->join();
+        // disconnect();
+        // rxqp_.destroy();
+        // txqp_.RecvQ().destroy();
+    }
+
+    CXLResourceManagerTool::CXLResourceManagerTool(BaseSoftMemPool *cpool,
+                                 const std::string &daemon_name) noexcept
+    : cpool_(cpool), id_(get_unique_id()), region_limit_(0),
+      txqp_(std::make_shared<QSingle>(utils::get_sq_name(daemon_name, false),
+                                      false),
+          std::make_shared<QSingle>(utils::get_ackq_name(daemon_name, id_),
+                                      true)),
+      rxqp_(std::to_string(id_), true), stop_(false), nr_pending_(0), stats_() {
+//   handler_thd_ = std::make_shared<std::thread>([&]() { pressure_handler(); });
+  if (!cpool_)
+    cpool_ = CachePool::global_cache_pool();
+  assert(cpool_);
+//   connect(daemon_name); // 连接完需要对CXLRMT进行初始化
+
+  // cxl_rmt = CXLResourceManagerTool(cpool,id_,mtx_,cv_,txqp_,rxqp_);
+}
+
+    CXLResourceManagerTool::CXLResourceManagerTool(BaseSoftMemPool *cpool,
                                                    uint64_t id,
-                                                   std::mutex mtx,
-                                                   std::condition_variable cv,
                                                    QPair txqp_,
                                                    QPair rxqp_) noexcept
-    : cpool_(cpool), id_(id), region_limit_(0), mtx_(mtx), cv_(cv),
+    : cpool_(cpool), id_(id), region_limit_(0),
     txqp_(txqp_), rxqp_(rxqp_), stop_(false), nr_pending_(0), stats_() 
     { // 这里cxl需要单独给它分配一个cxl-pool
         
@@ -149,7 +173,7 @@ namespace midas
         return headroom;
     }
 
-    int64_t CXLResourceManagerTool::AllocRegion(bool overcommit = false)
+    int64_t CXLResourceManagerTool::AllocRegion(bool overcommit) noexcept
     {
         int retry_cnt = 0;
     retry:
@@ -222,8 +246,9 @@ namespace midas
 
         int64_t region_id = ret_msg.mmsg.region_id;                // daemon确实回收到了内存，并告知了region_id
         assert(region_map_.find(region_id) == region_map_.cend()); // 确定没有被分配过
-
-        auto region = std::make_shared<Region>(id_, region_id);
+        
+        // TODO: 这个是元数据，后面需要设计一下将其放到本地内存里
+        auto region = std::make_shared<CXLRegion>(id_, region_id);
         region_map_[region_id] = region;
         assert(region->Size() == ret_msg.mmsg.size);
         assert((reinterpret_cast<uint64_t>(region->Addr()) & (~kRegionMask)) == 0);

@@ -35,6 +35,8 @@ ResourceManager::ResourceManager(BaseSoftMemPool *cpool,
     cpool_ = CachePool::global_cache_pool();
   assert(cpool_);
   connect(daemon_name); // 连接完需要对CXLRMT进行初始化
+
+  // cxl_rmt = CXLResourceManagerTool(cpool,id_,txqp_,rxqp_);
 }
 
 ResourceManager::~ResourceManager() noexcept {
